@@ -1,32 +1,94 @@
+version: '3.8'
+
 services:
-  mongo:
-    image: mongo:6
-    container_name: mongo 
+  mongo1:
+    image: mongo:latest
+    restart: always
+    hostname: mongo1
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=guyrt
+      - MONGO_INITDB_ROOT_PASSWORD=bob
+      - MONGO_REPLICA_SET_NAME=rs0
+    volumes:
+      - mongo1-data:/data/db
+      - mongo-keyfile:/etc/mongo-keyfile
+    command: ["--replSet", "rs0", "--keyFile", "/etc/mongo-keyfile/mongo-keyfile"]
+    networks:
+      - mongo-cluster
+
+  mongo2:
+    image: mongo:latest
+    restart: always
+    hostname: mongo2
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=guyrt
+      - MONGO_INITDB_ROOT_PASSWORD=bob
+      - MONGO_REPLICA_SET_NAME=rs0
+    volumes:
+      - mongo2-data:/data/db
+      - mongo-keyfile:/etc/mongo-keyfile
+    command: ["--replSet", "rs0", "--keyFile", "/etc/mongo-keyfile/mongo-keyfile"]
+    networks:
+      - mongo-cluster
+
+  mongo3:
+    image: mongo:latest
+    restart: always
+    hostname: mongo3
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=guyrt
+      - MONGO_INITDB_ROOT_PASSWORD=bob
+      - MONGO_REPLICA_SET_NAME=rs0
+    volumes:
+      - mongo3-data:/data/db
+      - mongo-keyfile:/etc/mongo-keyfile
+    command: ["--replSet", "rs0", "--keyFile", "/etc/mongo-keyfile/mongo-keyfile"]
+    networks:
+      - mongo-cluster
+
+  mongo-express:
+    image: mongo-express:latest
     restart: always
     ports:
-      - "27017:27017"
+      - "8081:8081"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: secret
-      MONGO_INITDB_DATABASE: admin 
-    entrypoint:
-      - bash
-      - -c
-      - |
-          cp /keyfile /mongo_keyfile
-          chmod 400 /mongo_keyfile
-          chown 999:999 /mongo_keyfile
-          exec docker-entrypoint.sh $$@
-    command: "mongod --bind_ip_all --replSet rs0 --keyFile /mongo_keyfile"
-    volumes:
-      - ./keyfile:/keyfile
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=guyrt
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=bFANwo1eaXQT6xJL5FH5
+      - ME_CONFIG_MONGODB_SERVER=mongo1
+    networks:
+      - mongo-cluster
 
-  mongo-setup:
-    image: mongo:6
-    container_name: mongo_setup
+  setup-replica:
+    image: mongo:latest
     depends_on:
-      - mongo
-    restart: on-failure
-    entrypoint: ["/bin/bash", "/setup_mongo.sh"]
-    volumes:
-      - ./setup_mongo.sh:/setup_mongo.sh
+      - mongo1
+      - mongo2
+      - mongo3
+    networks:
+      - mongo-cluster
+    command: >
+      bash -c "
+        sleep 10;
+        mongo --host mongo1:27017 -u guyrt -p bob --authenticationDatabase admin --eval 'rs.initiate({
+          _id: \"rs0\",
+          members: [
+            { _id: 0, host: \"mongo1:27017\" },
+            { _id: 1, host: \"mongo2:27017\" },
+            { _id: 2, host: \"mongo3:27017\" }
+          ]
+        })';
+      "
+
+volumes:
+  mongo1-data:
+    driver: local
+  mongo2-data:
+    driver: local
+  mongo3-data:
+    driver: local
+  mongo-keyfile:
+    driver: local
+
+networks:
+  mongo-cluster:
+    driver: bridge
